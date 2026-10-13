@@ -1,0 +1,30 @@
+[overlay]
+enabled = true
+topmost = true
+click_through = true
+status_visible = true
+status_text = "Active"
+
+[capture]
+directory = "screenshots"
+format = "png"
+
+[telegram]
+enabled = false
+mode = "local_only" # local_only, local_and_telegram, telegram_only
+
+[upload]
+enabled = false
+url = "https://your-vercel-app.vercel.app/api/upload"
+token = "your-device-upload-token"
+
+[llm]
+enabled = true
+api_key = "" # Primary OpenRouter key (can also be set in .env)
+api_keys = [] # List of fallback API keys, e.g. ["sk-or-v1-key1", "sk-or-v1-key2"]
+model = "google/gemini-2.5-flash"
+system_prompt = "You are an expert exam and test assistant. Only give the answer and the option only. No explanations, no markdown intro or outro. Output strictly as: Option <letter>: <Answer>"
+endpoint = "https://openrouter.ai/api/v1/chat/completions"
+max_tokens = 150
+caption_opacity = 145 # Semi-transparent (~57% opacity, range 1-255)
+custom_prompt = "Analyze the screenshot and solve this problem." # Custom prompt used in Custom mode or as starting text

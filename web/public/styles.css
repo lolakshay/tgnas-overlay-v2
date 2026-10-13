@@ -1,0 +1,796 @@
+/* ==========================================================================
+   DESIGN SYSTEM & VARIABLES
+   ========================================================================== */
+:root {
+  /* Fonts */
+  --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* Colors - Dark Mode Default (Premium Midnight Tech Aesthetic) */
+  --bg-primary: #0a0c16;
+  --bg-secondary: rgba(18, 22, 41, 0.7);
+  --bg-card: rgba(23, 28, 51, 0.6);
+  --bg-card-hover: rgba(30, 36, 66, 0.75);
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-color-hover: rgba(255, 255, 255, 0.15);
+  
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  
+  --accent-color: #a855f7; /* Violet */
+  --accent-glow: rgba(168, 85, 247, 0.4);
+  --success-color: #10b981;
+  --danger-color: #ef4444;
+  --danger-glow: rgba(239, 68, 68, 0.2);
+  
+  /* Layout Options */
+  --card-radius: 16px;
+  --button-radius: 12px;
+  --glass-blur: 16px;
+  --shadow-main: 0 12px 40px -8px rgba(0, 0, 0, 0.6);
+}
+
+/* Light Mode System Preference overrides */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg-primary: #f1f5f9;
+    --bg-secondary: rgba(255, 255, 255, 0.6);
+    --bg-card: rgba(255, 255, 255, 0.7);
+    --bg-card-hover: rgba(255, 255, 255, 0.95);
+    --border-color: rgba(0, 0, 0, 0.06);
+    --border-color-hover: rgba(0, 0, 0, 0.12);
+    
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+    
+    --accent-color: #7c3aed; /* Deeper violet */
+    --accent-glow: rgba(124, 58, 237, 0.2);
+    --shadow-main: 0 12px 30px -10px rgba(0, 0, 0, 0.15);
+  }
+}
+
+/* ==========================================================================
+   RESET & FOUNDATIONS
+   ========================================================================== */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ==========================================================================
+   AMBIENT BACKGROUND GLOWS (Dark Mode Only)
+   ========================================================================== */
+.bg-glow {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(100px);
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.12;
+  transition: opacity 0.5s ease;
+}
+
+@media (prefers-color-scheme: light) {
+  .bg-glow {
+    opacity: 0.04; /* Muted in light mode */
+  }
+}
+
+.blob-1 {
+  width: 45vw;
+  height: 45vw;
+  background: radial-gradient(circle, var(--accent-color) 0%, rgba(0,0,0,0) 70%);
+  top: -10%;
+  right: -5%;
+}
+
+.blob-2 {
+  width: 50vw;
+  height: 50vw;
+  background: radial-gradient(circle, #3b82f6 0%, rgba(0,0,0,0) 70%);
+  bottom: -15%;
+  left: -10%;
+}
+
+/* ==========================================================================
+   LAYOUT SCREEN CONTAINERS
+   ========================================================================== */
+#app-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  width: 100%;
+}
+
+.screen {
+  display: none;
+  width: 100%;
+  flex-grow: 1;
+}
+
+.screen.active {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Glassmorphism utility card */
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--border-color);
+  border-radius: var(--card-radius);
+  box-shadow: var(--shadow-main);
+  transition: border-color 0.3s ease, background 0.3s ease;
+}
+
+/* ==========================================================================
+   BUTTONS & INPUTS
+   ========================================================================== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 0.95rem;
+  border-radius: var(--button-radius);
+  border: 1px solid transparent;
+  padding: 10px 18px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  min-height: 44px; /* Mobile touch target safety */
+  user-select: none;
+  text-decoration: none;
+}
+
+.primary-btn {
+  background: var(--accent-color);
+  color: #ffffff;
+}
+
+.primary-btn:hover {
+  filter: brightness(1.15);
+  box-shadow: 0 0 16px var(--accent-glow);
+}
+
+.primary-btn:active {
+  transform: scale(0.98);
+}
+
+.secondary-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.secondary-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--border-color-hover);
+}
+
+.danger-btn {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: var(--danger-color);
+}
+
+.danger-btn:hover {
+  background: var(--danger-color);
+  color: #ffffff;
+  box-shadow: 0 0 12px var(--danger-glow);
+}
+
+.text-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  min-height: auto;
+}
+
+.text-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.icon-button {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+  min-width: 40px;
+  min-height: 40px;
+}
+
+.icon-button:hover {
+  color: var(--text-primary);
+}
+
+/* Input elements */
+input[type="password"] {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-color);
+  border-radius: var(--button-radius);
+  color: var(--text-primary);
+  padding: 12px 16px;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  transition: all 0.3s;
+}
+
+input[type="password"]:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+/* ==========================================================================
+   1. LOGIN SCREEN STYLING
+   ========================================================================== */
+#login-screen {
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 40px 30px;
+  text-align: center;
+}
+
+.login-header {
+  margin-bottom: 30px;
+}
+
+.logo-icon {
+  width: 72px;
+  height: 72px;
+  background: rgba(168, 85, 247, 0.1);
+  border: 1.5px solid var(--accent-color);
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-color);
+  margin: 0 auto 16px;
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+
+.logo-icon.small {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(168, 85, 247, 0.15);
+}
+
+.login-header h1 {
+  font-size: 1.8rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+  letter-spacing: -0.5px;
+}
+
+.login-header p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.input-group {
+  text-align: left;
+  margin-bottom: 24px;
+}
+
+.input-group label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.password-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-wrapper input {
+  padding-right: 48px;
+}
+
+.password-wrapper .icon-button {
+  position: absolute;
+  right: 6px;
+}
+
+.error-banner {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #fca5a5;
+  border-radius: var(--button-radius);
+  padding: 12px;
+  font-size: 0.9rem;
+  margin-bottom: 20px;
+  text-align: left;
+  line-height: 1.4;
+}
+
+.hidden {
+  display: none !important;
+}
+
+#login-submit-btn {
+  width: 100%;
+}
+
+/* ==========================================================================
+   2. DASHBOARD NAVIGATION HEADER
+   ========================================================================== */
+#dashboard-screen {
+  padding: 16px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  margin-bottom: 20px;
+}
+
+.navbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.navbar-brand h1 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+}
+
+.navbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.status-indicator {
+  font-size: 0.85rem;
+  background: rgba(16, 185, 129, 0.1);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  padding: 4px 10px;
+  border-radius: 30px;
+  font-weight: 500;
+}
+
+/* ==========================================================================
+   3. MOBILE-FIRST RESPONSIVE GRID LAYOUT
+   ========================================================================== */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+  width: 100%;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.section-header h2 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Standard glass-card section interiors */
+.latest-section,
+.history-section {
+  padding: 20px;
+}
+
+/* ==========================================================================
+   4. LATEST SCREENSHOT IMAGE CONTAINMENT
+   ========================================================================== */
+.image-wrapper {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16/10;
+  max-height: 550px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: var(--button-radius);
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s;
+}
+
+.image-wrapper.empty {
+  aspect-ratio: 16/9;
+}
+
+.image-wrapper img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+}
+
+.image-wrapper img:hover {
+  transform: scale(1.015);
+}
+
+.placeholder-text {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 0.95rem;
+}
+
+/* Details and Actions beneath Latest Preview */
+.capture-info {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.info-group {
+  display: flex;
+  gap: 16px;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.timestamp-box, .size-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.timestamp-box svg, .size-box svg {
+  color: var(--accent-color);
+}
+
+.action-row {
+  display: flex;
+  gap: 12px;
+}
+
+.action-row .btn {
+  flex-grow: 1;
+}
+
+.action-row #btn-delete-latest {
+  flex-grow: 0;
+}
+
+.latest-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--accent-color);
+  background: rgba(168, 85, 247, 0.15);
+  border: 1px solid var(--accent-color);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+/* ==========================================================================
+   5. HISTORY GRID & CARDS
+   ========================================================================== */
+.history-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 14px;
+  width: 100%;
+}
+
+.card {
+  position: relative;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-color);
+  border-radius: var(--button-radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.card:hover {
+  transform: translateY(-3px);
+  border-color: var(--border-color-hover);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.card-preview {
+  aspect-ratio: 16/10;
+  width: 100%;
+  overflow: hidden;
+  background: rgba(0,0,0,0.15);
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+}
+
+.card-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+}
+
+.card-preview:hover img {
+  transform: scale(1.05);
+}
+
+.card-details {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-grow: 1;
+}
+
+.card-details span {
+  font-size: 0.75rem;
+}
+
+.card-time {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.card-meta {
+  color: var(--text-muted);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-delete-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  min-height: auto;
+  min-width: auto;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.card-delete-btn:hover {
+  color: var(--danger-color);
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-muted);
+  gap: 12px;
+}
+
+.empty-state p {
+  font-size: 0.95rem;
+}
+
+/* ==========================================================================
+   6. RESPONSIVE BREAKPOINTS (Desktop Optimization)
+   ========================================================================== */
+
+/* Orientation optimizations */
+@media (orientation: landscape) and (max-height: 500px) {
+  .dashboard-grid {
+    grid-template-columns: 1.2fr 1fr;
+  }
+  .image-wrapper {
+    aspect-ratio: auto;
+    height: 180px;
+  }
+}
+
+/* Large Phones + Tablets */
+@media (min-width: 768px) {
+  #dashboard-screen {
+    padding: 24px;
+  }
+  .navbar {
+    margin-bottom: 24px;
+  }
+  .dashboard-grid {
+    grid-template-columns: 1.3fr 1fr; /* Split layout */
+    align-items: start;
+    gap: 24px;
+  }
+  .latest-section {
+    position: sticky;
+    top: 24px;
+  }
+  .history-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 16px;
+  }
+  .capture-info {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .capture-info .action-row {
+    flex-grow: 0;
+  }
+}
+
+/* Large Screens */
+@media (min-width: 1024px) {
+  .dashboard-grid {
+    grid-template-columns: 1.5fr 1fr;
+    gap: 32px;
+  }
+  .history-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+  .navbar-brand h1 {
+    font-size: 1.5rem;
+  }
+}
+
+@media (min-width: 1440px) {
+  .dashboard-grid {
+    grid-template-columns: 1.6fr 1fr;
+  }
+}
+
+/* ==========================================================================
+   7. FULLSCREEN VIEWER (LIGHTBOX)
+   ========================================================================== */
+.lightbox-modal {
+  border: none;
+  background: transparent;
+  width: 100vw;
+  height: 100vh;
+  max-width: 100%;
+  max-height: 100%;
+  padding: 0;
+  margin: 0;
+}
+
+.lightbox-modal::backdrop {
+  background: rgba(4, 5, 10, 0.95);
+  backdrop-filter: blur(10px);
+}
+
+.lightbox-overlay {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 20px;
+  user-select: none;
+}
+
+.lightbox-close-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s;
+  z-index: 1001;
+}
+
+.lightbox-close-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  transform: rotate(90deg);
+}
+
+.lightbox-content {
+  max-width: 95%;
+  max-height: 85%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.lightbox-content img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+  animation: zoomIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.lightbox-caption-text {
+  margin-top: 16px;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  background: rgba(0, 0, 0, 0.6);
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border-color);
+}
+
+/* Animations */
+@keyframes zoomIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.lightbox-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 16px;
+  width: 100%;
+  max-width: 600px;
+  z-index: 1002;
+}
+
+.lightbox-footer .lightbox-caption-text {
+  margin-top: 0;
+  flex-grow: 1;
+  text-align: center;
+}
+

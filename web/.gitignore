@@ -1,0 +1,13 @@
+# Node dependencies
+node_modules/
+
+# Environment secrets
+.env
+.env*.local
+
+# Vercel deployment
+.vercel/
+
+# Uploaded screenshots
+uploads/*
+!uploads/.gitkeep

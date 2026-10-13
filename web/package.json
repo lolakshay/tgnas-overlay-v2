@@ -1,0 +1,17 @@
+{
+  "name": "transparent-overlay-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@vercel/blob": "^0.23.4",
+    "busboy": "^1.6.0",
+    "cookie": "^0.6.0"
+  },
+  "devDependencies": {
+    "@types/busboy": "^1.5.4",
+    "@types/cookie": "^0.6.0",
+    "@types/node": "^20.11.0",
+    "@vercel/node": "^3.0.0",
+    "typescript": "^5.3.3"
+  }
+}

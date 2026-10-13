@@ -1,0 +1,400 @@
+use anyhow::{anyhow, Result};
+use std::sync::Mutex;
+use windows::Win32::{
+    Foundation::LRESULT,
+    UI::{
+        Input::KeyboardAndMouse::GetAsyncKeyState,
+        WindowsAndMessaging::{
+            CallNextHookEx, PostThreadMessageW, SetWindowsHookExW, UnhookWindowsHookEx,
+            HHOOK, KBDLLHOOKSTRUCT, WH_KEYBOARD_LL, WM_APP, WM_KEYDOWN, WM_KEYUP,
+            WM_SYSKEYDOWN, WM_SYSKEYUP,
+        },
+    },
+};
+
+pub const WM_APP_SCREENSHOT: u32 = WM_APP + 1;
+pub const WM_APP_TOGGLE_ANSWERS: u32 = WM_APP + 2;
+pub const WM_APP_TOGGLE_OVERLAY: u32 = WM_APP + 3;
+pub const WM_APP_EMERGENCY_HIDE: u32 = WM_APP + 4;
+pub const WM_APP_LLM_UPDATE: u32 = WM_APP + 5;
+pub const WM_APP_PREV_HISTORY: u32 = WM_APP + 6;
+pub const WM_APP_NEXT_HISTORY: u32 = WM_APP + 7;
+pub const WM_APP_TOGGLE_MENU: u32 = WM_APP + 8;
+pub const WM_APP_OPACITY_CHANGE: u32 = WM_APP + 9;
+pub const WM_APP_TOGGLE_DRAG_MODE: u32 = WM_APP + 10;
+pub const WM_APP_SAVE_MENU_POS: u32 = WM_APP + 11;
+pub const WM_APP_FONT_SIZE_CHANGE: u32 = WM_APP + 12;
+pub const WM_APP_CYCLE_THEME: u32 = WM_APP + 13;
+pub const WM_APP_EXPORT_SESSION: u32 = WM_APP + 14;
+pub const WM_APP_QUIT: u32 = WM_APP + 15;
+pub const WM_APP_TOGGLE_VPN: u32 = WM_APP + 16;
+pub const WM_APP_CYCLE_PROMPT_MODE: u32 = WM_APP + 17;
+pub const WM_APP_TOGGLE_MENU_CLICK_THROUGH: u32 = WM_APP + 18;
+pub const WM_APP_OPEN_CUSTOM_QUESTION: u32 = WM_APP + 19;
+pub const WM_APP_CUSTOM_QUESTION_SUBMIT: u32 = WM_APP + 20;
+
+struct HookState {
+    hook: Option<isize>,
+    main_thread_id: u32,
+
+    p_down: bool,
+    o_down: bool,
+    po_active: bool,
+
+    i_down: bool,
+    io_active: bool,
+
+    k_down: bool,
+    l_down: bool,
+    kl_active: bool,
+
+    comma_down: bool,
+    period_down: bool,
+    comma_period_active: bool,
+
+    m_down: bool,
+    n_down: bool,
+    mn_active: bool,
+
+    b_down: bool,
+    bn_active: bool,
+
+    q_down: bool,
+    w_down: bool,
+    qw_active: bool,
+
+    z_down: bool,
+    x_down: bool,
+    zx_active: bool,
+
+    bracket_open_down: bool,
+    bracket_close_down: bool,
+}
+
+static STATE: Mutex<HookState> = Mutex::new(HookState {
+    hook: None,
+    main_thread_id: 0,
+
+    p_down: false,
+    o_down: false,
+    po_active: false,
+
+    i_down: false,
+    io_active: false,
+
+    k_down: false,
+    l_down: false,
+    kl_active: false,
+
+    comma_down: false,
+    period_down: false,
+    comma_period_active: false,
+
+    m_down: false,
+    n_down: false,
+    mn_active: false,
+
+    b_down: false,
+    bn_active: false,
+
+    q_down: false,
+    w_down: false,
+    qw_active: false,
+
+    z_down: false,
+    x_down: false,
+    zx_active: false,
+
+    bracket_open_down: false,
+    bracket_close_down: false,
+});
+
+pub struct RegisteredHotkeys;
+
+impl RegisteredHotkeys {
+    pub unsafe fn register(main_thread_id: u32) -> Result<Self> {
+        {
+            let mut state = STATE.lock().map_err(|_| anyhow!("Lock poisoned"))?;
+            state.main_thread_id = main_thread_id;
+            state.p_down = false;
+            state.o_down = false;
+            state.po_active = false;
+            state.i_down = false;
+            state.io_active = false;
+            state.k_down = false;
+            state.l_down = false;
+            state.kl_active = false;
+            state.comma_down = false;
+            state.period_down = false;
+            state.comma_period_active = false;
+            state.m_down = false;
+            state.n_down = false;
+            state.mn_active = false;
+            state.b_down = false;
+            state.bn_active = false;
+            state.q_down = false;
+            state.w_down = false;
+            state.qw_active = false;
+            state.z_down = false;
+            state.x_down = false;
+            state.zx_active = false;
+            state.bracket_open_down = false;
+            state.bracket_close_down = false;
+        }
+
+        let hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(ll_keyboard_proc), None, 0)
+            .map_err(|e| anyhow!("Failed to install WH_KEYBOARD_LL hook: {}", e))?;
+
+        if let Ok(mut state) = STATE.lock() {
+            state.hook = Some(hook.0 as isize);
+        }
+
+        tracing::info!("Registered stealth dual-key hooks: P+O (Capture), I+O (Custom Q&A), L+K (Answers), ,+. (Overlay), M+N (Menu), Q+W (Quit), Z+X (Hide), [ / ] (History)");
+        Ok(Self)
+    }
+
+    pub fn set_esc_enabled(&mut self, _enabled: bool) {
+        // No-op: Esc, Shift, Ctrl, and Alt are completely disabled for zero proctor detection!
+    }
+}
+
+impl Drop for RegisteredHotkeys {
+    fn drop(&mut self) {
+        if let Ok(mut state) = STATE.lock() {
+            if let Some(raw) = state.hook.take() {
+                unsafe {
+                    let _ = UnhookWindowsHookEx(HHOOK(raw as *mut std::ffi::c_void));
+                }
+            }
+        }
+    }
+}
+
+fn is_phys_down(vk: u32) -> bool {
+    unsafe { (GetAsyncKeyState(vk as i32) as u16 & 0x8000) != 0 }
+}
+
+unsafe extern "system" fn ll_keyboard_proc(
+    n_code: i32,
+    wparam: windows::Win32::Foundation::WPARAM,
+    lparam: windows::Win32::Foundation::LPARAM,
+) -> LRESULT {
+    if n_code >= 0 {
+        let msg = wparam.0 as u32;
+        let is_down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
+        let is_up = msg == WM_KEYUP || msg == WM_SYSKEYUP;
+
+        if is_down || is_up {
+            let kbd = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
+            let vk = kbd.vkCode;
+
+            if let Ok(mut state) = STATE.lock() {
+                let main_thread_id = state.main_thread_id;
+
+                match vk {
+                    0x50 => state.p_down = is_down,      // 'P'
+                    0x4F => state.o_down = is_down,      // 'O'
+                    0x49 => state.i_down = is_down,      // 'I'
+                    0x4B => state.k_down = is_down,      // 'K'
+                    0x4C => state.l_down = is_down,      // 'L'
+                    0xBC => state.comma_down = is_down,  // ','
+                    0xBE => state.period_down = is_down, // '.'
+                    0x4D => state.m_down = is_down,      // 'M'
+                    0x4E => state.n_down = is_down,      // 'N'
+                    0x42 => state.b_down = is_down,      // 'B'
+                    0x51 => state.q_down = is_down,      // 'Q'
+                    0x57 => state.w_down = is_down,      // 'W'
+                    0x5A => state.z_down = is_down,      // 'Z'
+                    0x58 => state.x_down = is_down,      // 'X'
+                    _ => {}
+                }
+
+                // 1. P + O: Take screenshot & send to LLM
+                if is_down && (vk == 0x50 || vk == 0x4F) {
+                    let both_down = (state.p_down && state.o_down)
+                        || (state.p_down && is_phys_down(0x4F))
+                        || (state.o_down && is_phys_down(0x50));
+                    if both_down && !state.po_active {
+                        state.po_active = true;
+                        tracing::info!("Shortcut triggered: P + O (Capture screenshot & LLM solve)");
+                        let _ = PostThreadMessageW(
+                            main_thread_id,
+                            WM_APP_SCREENSHOT,
+                            windows::Win32::Foundation::WPARAM(0),
+                            windows::Win32::Foundation::LPARAM(0),
+                        );
+                    }
+                } else if is_up && (vk == 0x50 || vk == 0x4F) {
+                    state.po_active = false;
+                }
+
+                // 1b. I + O: Ask Custom Question (Open dialog)
+                if is_down && (vk == 0x49 || vk == 0x4F) {
+                    let both_down = (state.i_down && state.o_down)
+                        || (state.i_down && is_phys_down(0x4F))
+                        || (state.o_down && is_phys_down(0x49));
+                    if both_down && !state.io_active {
+                        state.io_active = true;
+                        tracing::info!("Shortcut triggered: I + O (Ask Custom Question)");
+                        let _ = PostThreadMessageW(
+                            main_thread_id,
+                            WM_APP_OPEN_CUSTOM_QUESTION,
+                            windows::Win32::Foundation::WPARAM(0),
+                            windows::Win32::Foundation::LPARAM(0),
+                        );
+                    }
+                } else if is_up && (vk == 0x49 || vk == 0x4F) {
+                    state.io_active = false;
+                }
+
+                // 2. L + K: Toggle answers caption HUD
+                if is_down && (vk == 0x4B || vk == 0x4C) {
+                    let both_down = (state.k_down && state.l_down)
+                        || (state.k_down && is_phys_down(0x4C))
+                        || (state.l_down && is_phys_down(0x4B));
+                    if both_down && !state.kl_active {
+                        state.kl_active = true;
+                        tracing::info!("Shortcut triggered: L + K (Toggle answer display)");
+                        let _ = PostThreadMessageW(
+                            main_thread_id,
+                            WM_APP_TOGGLE_ANSWERS,
+                            windows::Win32::Foundation::WPARAM(0),
+                            windows::Win32::Foundation::LPARAM(0),
+                        );
+                    }
+                } else if is_up && (vk == 0x4B || vk == 0x4C) {
+                    state.kl_active = false;
+                }
+
+                // 3. , + .: Toggle transparent overlay
+                if is_down && (vk == 0xBC || vk == 0xBE) {
+                    let both_down = (state.comma_down && state.period_down)
+                        || (state.comma_down && is_phys_down(0xBE))
+                        || (state.period_down && is_phys_down(0xBC));
+                    if both_down && !state.comma_period_active {
+                        state.comma_period_active = true;
+                        tracing::info!("Shortcut triggered: , + . (Toggle overlay visibility)");
+                        let _ = PostThreadMessageW(
+                            main_thread_id,
+                            WM_APP_TOGGLE_OVERLAY,
+                            windows::Win32::Foundation::WPARAM(0),
+                            windows::Win32::Foundation::LPARAM(0),
+                        );
+                    }
+                } else if is_up && (vk == 0xBC || vk == 0xBE) {
+                    state.comma_period_active = false;
+                }
+
+                // 4. M + N: Toggle Master Control Panel (Menu Bar)
+                if is_down && (vk == 0x4D || vk == 0x4E) {
+                    let both_down = (state.m_down && state.n_down)
+                        || (state.m_down && is_phys_down(0x4E))
+                        || (state.n_down && is_phys_down(0x4D));
+                    if both_down && !state.mn_active {
+                        state.mn_active = true;
+                        tracing::info!("Shortcut triggered: M + N (Toggle Menu Bar)");
+                        let _ = PostThreadMessageW(
+                            main_thread_id,
+                            WM_APP_TOGGLE_MENU,
+                            windows::Win32::Foundation::WPARAM(0),
+                            windows::Win32::Foundation::LPARAM(0),
+                        );
+                    }
+                } else if is_up && (vk == 0x4D || vk == 0x4E) {
+                    state.mn_active = false;
+                }
+
+                // 4b. B + N: Toggle Menu Bar Click-Through (Ghost mode)
+                if is_down && (vk == 0x42 || vk == 0x4E) {
+                    let both_down = (state.b_down && state.n_down)
+                        || (state.b_down && is_phys_down(0x4E))
+                        || (state.n_down && is_phys_down(0x42));
+                    if both_down && !state.bn_active {
+                        state.bn_active = true;
+                        tracing::info!("Shortcut triggered: B + N (Toggle Menu Click-Through)");
+                        let _ = PostThreadMessageW(
+                            main_thread_id,
+                            WM_APP_TOGGLE_MENU_CLICK_THROUGH,
+                            windows::Win32::Foundation::WPARAM(0),
+                            windows::Win32::Foundation::LPARAM(0),
+                        );
+                    }
+                } else if is_up && (vk == 0x42 || vk == 0x4E) {
+                    state.bn_active = false;
+                }
+
+                // 5. '[' key (0xDB): Revisit previous generated answer
+                if is_down && vk == 0xDB {
+                    if !state.bracket_open_down {
+                        state.bracket_open_down = true;
+                        tracing::info!("Shortcut triggered: [ (Previous history)");
+                        let _ = PostThreadMessageW(
+                            main_thread_id,
+                            WM_APP_PREV_HISTORY,
+                            windows::Win32::Foundation::WPARAM(0),
+                            windows::Win32::Foundation::LPARAM(0),
+                        );
+                    }
+                } else if is_up && vk == 0xDB {
+                    state.bracket_open_down = false;
+                }
+
+                // 6. ']' key (0xDD): Revisit next generated answer
+                if is_down && vk == 0xDD {
+                    if !state.bracket_close_down {
+                        state.bracket_close_down = true;
+                        tracing::info!("Shortcut triggered: ] (Next history)");
+                        let _ = PostThreadMessageW(
+                            main_thread_id,
+                            WM_APP_NEXT_HISTORY,
+                            windows::Win32::Foundation::WPARAM(0),
+                            windows::Win32::Foundation::LPARAM(0),
+                        );
+                    }
+                } else if is_up && vk == 0xDD {
+                    state.bracket_close_down = false;
+                }
+
+                // 7. Q + W: Quit application cleanly (Zero modifier keys required!)
+                if is_down && (vk == 0x51 || vk == 0x57) {
+                    let both_down = (state.q_down && state.w_down)
+                        || (state.q_down && is_phys_down(0x57))
+                        || (state.w_down && is_phys_down(0x51));
+                    if both_down && !state.qw_active {
+                        state.qw_active = true;
+                        tracing::info!("Shortcut triggered: Q + W (Clean Application Exit)");
+                        let _ = PostThreadMessageW(
+                            main_thread_id,
+                            WM_APP_QUIT,
+                            windows::Win32::Foundation::WPARAM(0),
+                            windows::Win32::Foundation::LPARAM(0),
+                        );
+                    }
+                } else if is_up && (vk == 0x51 || vk == 0x57) {
+                    state.qw_active = false;
+                }
+
+                // 8. Z + X: Emergency Hide everything (Zero modifier keys required!)
+                if is_down && (vk == 0x5A || vk == 0x58) {
+                    let both_down = (state.z_down && state.x_down)
+                        || (state.z_down && is_phys_down(0x58))
+                        || (state.x_down && is_phys_down(0x5A));
+                    if both_down && !state.zx_active {
+                        state.zx_active = true;
+                        tracing::info!("Shortcut triggered: Z + X (Emergency Hide)");
+                        let _ = PostThreadMessageW(
+                            main_thread_id,
+                            WM_APP_EMERGENCY_HIDE,
+                            windows::Win32::Foundation::WPARAM(0),
+                            windows::Win32::Foundation::LPARAM(0),
+                        );
+                    }
+                } else if is_up && (vk == 0x5A || vk == 0x58) {
+                    state.zx_active = false;
+                }
+            }
+        }
+    }
+
+    CallNextHookEx(None, n_code, wparam, lparam)
+}
