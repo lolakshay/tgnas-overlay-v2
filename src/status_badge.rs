@@ -112,6 +112,7 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> 
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, create.lpCreateParams as isize);
             LRESULT(1)
         }
+        WM_MOUSEACTIVATE => LRESULT(MA_NOACTIVATE as isize),
         WM_NCHITTEST => LRESULT(HTTRANSPARENT as isize),
         WM_ERASEBKGND => LRESULT(1),
         WM_PAINT => {

@@ -53,10 +53,16 @@ if not "%SIGNTOOL%"=="" (
     echo [WARNING] signtool.exe not found. Binary compiled without signature.
 )
 
-:: 4. Deploy standalone copy
+:: 4. Deploy standalone copy and verify signature
 echo.
-echo [3/3] Deploying signed standalone binary to %OUT_EXE%...
+echo [3/3] Deploying and signing final standalone binary to %OUT_EXE%...
 copy /Y "%TARGET_EXE%" "%OUT_EXE%" >nul
+if not "%SIGNTOOL%"=="" (
+    "%SIGNTOOL%" sign /s My /n "Windows Desktop Host" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 "%OUT_EXE%" >nul 2>&1
+    if !ERRORLEVEL! NEQ 0 (
+        "%SIGNTOOL%" sign /s My /n "Windows Desktop Host" /fd SHA256 "%OUT_EXE%" >nul 2>&1
+    )
+)
 
 echo.
 echo ========================================================

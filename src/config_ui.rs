@@ -20,16 +20,40 @@ const ID_API_KEYS: i32 = 106;
 const ID_MODEL: i32 = 107;
 const CHECKED: usize = 1;
 
-const PRESET_MODELS: &[&str] = &[
-    "anthropic/claude-3.5-sonnet",
-    "anthropic/claude-3.7-sonnet",
-    "openai/o3-mini",
+pub const PRESET_MODELS: &[&str] = &[
+    // Tier 1: Next-Gen Gemini Frontier Reasoning & Vision (High-effort internal thinking)
+    "google/gemini-3.8-flash",
+    "google/gemini-3.7-flash",
+    "google/gemini-3.5-flash",
+    "google/gemini-3.1-pro-preview",
+    "google/gemini-4-argon",
     "google/gemini-2.5-pro",
     "google/gemini-2.5-flash",
-    "google/gemini-2.0-flash-001",
+
+    // Tier 2: Anthropic Frontier Reasoning & Multimodal
+    "anthropic/claude-sonnet-5.5",
+    "anthropic/claude-sonnet-5",
+    "anthropic/claude-3.7-sonnet",
+    "anthropic/claude-3.7-sonnet:thinking",
+    "anthropic/claude-3.5-sonnet",
+
+    // Tier 3: OpenAI Reasoning & Flagship Multimodal
+    "openai/o3-mini",
+    "openai/o3-mini-high",
+    "openai/o1",
     "openai/gpt-4o",
     "openai/gpt-4o-mini",
-    "meta-llama/llama-3.2-11b-vision-instruct",
+
+    // Tier 4: Open-Weights Reasoning & Vision Champions
+    "deepseek/deepseek-r1",
+    "qwen/qwen-2.5-vl-72b-instruct",
+    "meta-llama/llama-3.2-90b-vision-instruct",
+    "mistralai/pixtral-large-2411",
+    "x-ai/grok-2-vision-1212",
+
+    // Tier 5: Sub-Second Speed Vision Models
+    "google/gemini-2.0-flash-001",
+    "anthropic/claude-3.5-haiku",
 ];
 
 struct State {
@@ -205,7 +229,7 @@ unsafe fn create_controls(hwnd: HWND, config: &Config) -> Result<()> {
         110,
         136,
         300,
-        160,
+        240,
         Some(hwnd),
         Some(menu(ID_MODEL)),
         Some(instance),

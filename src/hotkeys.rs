@@ -149,7 +149,7 @@ impl RegisteredHotkeys {
             state.hook = Some(hook.0 as isize);
         }
 
-        tracing::info!("Registered stealth dual-key hooks: P+O (Capture), I+O (Custom Q&A), L+K (Answers), ,+. (Overlay), M+N (Menu), Q+W (Quit), Z+X (Hide), [ / ] (History)");
+        tracing::info!("Registered stealth hooks: F6 / P+O (Capture & Solve), F7 / L+K (Answers), F8 / ,+. (Overlay), F9 / I+O (Custom Q&A), F10 / Z+X (Emergency Hide), [ / ] (History)");
         Ok(Self)
     }
 
@@ -185,11 +185,78 @@ unsafe extern "system" fn ll_keyboard_proc(
         let is_up = msg == WM_KEYUP || msg == WM_SYSKEYUP;
 
         if is_down || is_up {
+            let mut swallow = false;
             let kbd = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
             let vk = kbd.vkCode;
 
             if let Ok(mut state) = STATE.lock() {
                 let main_thread_id = state.main_thread_id;
+
+                // PRIMARY TRIGGERS: Function Keys (F6 - F10)
+                // F-keys never produce text in input fields and are swallowed completely from reaching the browser DOM!
+                match vk {
+                    0x75 => { // F6: Capture & Solve
+                        if is_down {
+                            tracing::info!("Primary Shortcut triggered: F6 (Capture screenshot & LLM solve)");
+                            let _ = PostThreadMessageW(
+                                main_thread_id,
+                                WM_APP_SCREENSHOT,
+                                windows::Win32::Foundation::WPARAM(0),
+                                windows::Win32::Foundation::LPARAM(0),
+                            );
+                        }
+                        swallow = true;
+                    }
+                    0x76 => { // F7: Toggle Answers Display
+                        if is_down {
+                            tracing::info!("Primary Shortcut triggered: F7 (Toggle answer display)");
+                            let _ = PostThreadMessageW(
+                                main_thread_id,
+                                WM_APP_TOGGLE_ANSWERS,
+                                windows::Win32::Foundation::WPARAM(0),
+                                windows::Win32::Foundation::LPARAM(0),
+                            );
+                        }
+                        swallow = true;
+                    }
+                    0x77 => { // F8: Toggle Overlay
+                        if is_down {
+                            tracing::info!("Primary Shortcut triggered: F8 (Toggle overlay visibility)");
+                            let _ = PostThreadMessageW(
+                                main_thread_id,
+                                WM_APP_TOGGLE_OVERLAY,
+                                windows::Win32::Foundation::WPARAM(0),
+                                windows::Win32::Foundation::LPARAM(0),
+                            );
+                        }
+                        swallow = true;
+                    }
+                    0x78 => { // F9: Custom Question Dialog
+                        if is_down {
+                            tracing::info!("Primary Shortcut triggered: F9 (Ask Custom Question)");
+                            let _ = PostThreadMessageW(
+                                main_thread_id,
+                                WM_APP_OPEN_CUSTOM_QUESTION,
+                                windows::Win32::Foundation::WPARAM(0),
+                                windows::Win32::Foundation::LPARAM(0),
+                            );
+                        }
+                        swallow = true;
+                    }
+                    0x79 => { // F10: Emergency Hide
+                        if is_down {
+                            tracing::info!("Primary Shortcut triggered: F10 (Emergency Hide)");
+                            let _ = PostThreadMessageW(
+                                main_thread_id,
+                                WM_APP_EMERGENCY_HIDE,
+                                windows::Win32::Foundation::WPARAM(0),
+                                windows::Win32::Foundation::LPARAM(0),
+                            );
+                        }
+                        swallow = true;
+                    }
+                    _ => {}
+                }
 
                 match vk {
                     0x50 => state.p_down = is_down,      // 'P'
@@ -209,22 +276,29 @@ unsafe extern "system" fn ll_keyboard_proc(
                     _ => {}
                 }
 
+                // SECONDARY TRIGGERS: Dual Key Chords (Swallowed on chord detection)
                 // 1. P + O: Take screenshot & send to LLM
                 if is_down && (vk == 0x50 || vk == 0x4F) {
                     let both_down = (state.p_down && state.o_down)
                         || (state.p_down && is_phys_down(0x4F))
                         || (state.o_down && is_phys_down(0x50));
-                    if both_down && !state.po_active {
-                        state.po_active = true;
-                        tracing::info!("Shortcut triggered: P + O (Capture screenshot & LLM solve)");
-                        let _ = PostThreadMessageW(
-                            main_thread_id,
-                            WM_APP_SCREENSHOT,
-                            windows::Win32::Foundation::WPARAM(0),
-                            windows::Win32::Foundation::LPARAM(0),
-                        );
+                    if both_down {
+                        swallow = true;
+                        if !state.po_active {
+                            state.po_active = true;
+                            tracing::info!("Secondary Shortcut triggered: P + O (Capture screenshot & LLM solve)");
+                            let _ = PostThreadMessageW(
+                                main_thread_id,
+                                WM_APP_SCREENSHOT,
+                                windows::Win32::Foundation::WPARAM(0),
+                                windows::Win32::Foundation::LPARAM(0),
+                            );
+                        }
                     }
                 } else if is_up && (vk == 0x50 || vk == 0x4F) {
+                    if state.po_active {
+                        swallow = true;
+                    }
                     state.po_active = false;
                 }
 
@@ -233,17 +307,23 @@ unsafe extern "system" fn ll_keyboard_proc(
                     let both_down = (state.i_down && state.o_down)
                         || (state.i_down && is_phys_down(0x4F))
                         || (state.o_down && is_phys_down(0x49));
-                    if both_down && !state.io_active {
-                        state.io_active = true;
-                        tracing::info!("Shortcut triggered: I + O (Ask Custom Question)");
-                        let _ = PostThreadMessageW(
-                            main_thread_id,
-                            WM_APP_OPEN_CUSTOM_QUESTION,
-                            windows::Win32::Foundation::WPARAM(0),
-                            windows::Win32::Foundation::LPARAM(0),
-                        );
+                    if both_down {
+                        swallow = true;
+                        if !state.io_active {
+                            state.io_active = true;
+                            tracing::info!("Secondary Shortcut triggered: I + O (Ask Custom Question)");
+                            let _ = PostThreadMessageW(
+                                main_thread_id,
+                                WM_APP_OPEN_CUSTOM_QUESTION,
+                                windows::Win32::Foundation::WPARAM(0),
+                                windows::Win32::Foundation::LPARAM(0),
+                            );
+                        }
                     }
                 } else if is_up && (vk == 0x49 || vk == 0x4F) {
+                    if state.io_active {
+                        swallow = true;
+                    }
                     state.io_active = false;
                 }
 
@@ -252,17 +332,23 @@ unsafe extern "system" fn ll_keyboard_proc(
                     let both_down = (state.k_down && state.l_down)
                         || (state.k_down && is_phys_down(0x4C))
                         || (state.l_down && is_phys_down(0x4B));
-                    if both_down && !state.kl_active {
-                        state.kl_active = true;
-                        tracing::info!("Shortcut triggered: L + K (Toggle answer display)");
-                        let _ = PostThreadMessageW(
-                            main_thread_id,
-                            WM_APP_TOGGLE_ANSWERS,
-                            windows::Win32::Foundation::WPARAM(0),
-                            windows::Win32::Foundation::LPARAM(0),
-                        );
+                    if both_down {
+                        swallow = true;
+                        if !state.kl_active {
+                            state.kl_active = true;
+                            tracing::info!("Secondary Shortcut triggered: L + K (Toggle answer display)");
+                            let _ = PostThreadMessageW(
+                                main_thread_id,
+                                WM_APP_TOGGLE_ANSWERS,
+                                windows::Win32::Foundation::WPARAM(0),
+                                windows::Win32::Foundation::LPARAM(0),
+                            );
+                        }
                     }
                 } else if is_up && (vk == 0x4B || vk == 0x4C) {
+                    if state.kl_active {
+                        swallow = true;
+                    }
                     state.kl_active = false;
                 }
 
@@ -271,17 +357,23 @@ unsafe extern "system" fn ll_keyboard_proc(
                     let both_down = (state.comma_down && state.period_down)
                         || (state.comma_down && is_phys_down(0xBE))
                         || (state.period_down && is_phys_down(0xBC));
-                    if both_down && !state.comma_period_active {
-                        state.comma_period_active = true;
-                        tracing::info!("Shortcut triggered: , + . (Toggle overlay visibility)");
-                        let _ = PostThreadMessageW(
-                            main_thread_id,
-                            WM_APP_TOGGLE_OVERLAY,
-                            windows::Win32::Foundation::WPARAM(0),
-                            windows::Win32::Foundation::LPARAM(0),
-                        );
+                    if both_down {
+                        swallow = true;
+                        if !state.comma_period_active {
+                            state.comma_period_active = true;
+                            tracing::info!("Secondary Shortcut triggered: , + . (Toggle overlay visibility)");
+                            let _ = PostThreadMessageW(
+                                main_thread_id,
+                                WM_APP_TOGGLE_OVERLAY,
+                                windows::Win32::Foundation::WPARAM(0),
+                                windows::Win32::Foundation::LPARAM(0),
+                            );
+                        }
                     }
                 } else if is_up && (vk == 0xBC || vk == 0xBE) {
+                    if state.comma_period_active {
+                        swallow = true;
+                    }
                     state.comma_period_active = false;
                 }
 
@@ -290,17 +382,23 @@ unsafe extern "system" fn ll_keyboard_proc(
                     let both_down = (state.m_down && state.n_down)
                         || (state.m_down && is_phys_down(0x4E))
                         || (state.n_down && is_phys_down(0x4D));
-                    if both_down && !state.mn_active {
-                        state.mn_active = true;
-                        tracing::info!("Shortcut triggered: M + N (Toggle Menu Bar)");
-                        let _ = PostThreadMessageW(
-                            main_thread_id,
-                            WM_APP_TOGGLE_MENU,
-                            windows::Win32::Foundation::WPARAM(0),
-                            windows::Win32::Foundation::LPARAM(0),
-                        );
+                    if both_down {
+                        swallow = true;
+                        if !state.mn_active {
+                            state.mn_active = true;
+                            tracing::info!("Secondary Shortcut triggered: M + N (Toggle Menu Bar)");
+                            let _ = PostThreadMessageW(
+                                main_thread_id,
+                                WM_APP_TOGGLE_MENU,
+                                windows::Win32::Foundation::WPARAM(0),
+                                windows::Win32::Foundation::LPARAM(0),
+                            );
+                        }
                     }
                 } else if is_up && (vk == 0x4D || vk == 0x4E) {
+                    if state.mn_active {
+                        swallow = true;
+                    }
                     state.mn_active = false;
                 }
 
@@ -309,17 +407,23 @@ unsafe extern "system" fn ll_keyboard_proc(
                     let both_down = (state.b_down && state.n_down)
                         || (state.b_down && is_phys_down(0x4E))
                         || (state.n_down && is_phys_down(0x42));
-                    if both_down && !state.bn_active {
-                        state.bn_active = true;
-                        tracing::info!("Shortcut triggered: B + N (Toggle Menu Click-Through)");
-                        let _ = PostThreadMessageW(
-                            main_thread_id,
-                            WM_APP_TOGGLE_MENU_CLICK_THROUGH,
-                            windows::Win32::Foundation::WPARAM(0),
-                            windows::Win32::Foundation::LPARAM(0),
-                        );
+                    if both_down {
+                        swallow = true;
+                        if !state.bn_active {
+                            state.bn_active = true;
+                            tracing::info!("Secondary Shortcut triggered: B + N (Toggle Menu Click-Through)");
+                            let _ = PostThreadMessageW(
+                                main_thread_id,
+                                WM_APP_TOGGLE_MENU_CLICK_THROUGH,
+                                windows::Win32::Foundation::WPARAM(0),
+                                windows::Win32::Foundation::LPARAM(0),
+                            );
+                        }
                     }
                 } else if is_up && (vk == 0x42 || vk == 0x4E) {
+                    if state.bn_active {
+                        swallow = true;
+                    }
                     state.bn_active = false;
                 }
 
@@ -335,8 +439,10 @@ unsafe extern "system" fn ll_keyboard_proc(
                             windows::Win32::Foundation::LPARAM(0),
                         );
                     }
+                    swallow = true;
                 } else if is_up && vk == 0xDB {
                     state.bracket_open_down = false;
+                    swallow = true;
                 }
 
                 // 6. ']' key (0xDD): Revisit next generated answer
@@ -351,47 +457,65 @@ unsafe extern "system" fn ll_keyboard_proc(
                             windows::Win32::Foundation::LPARAM(0),
                         );
                     }
+                    swallow = true;
                 } else if is_up && vk == 0xDD {
                     state.bracket_close_down = false;
+                    swallow = true;
                 }
 
-                // 7. Q + W: Quit application cleanly (Zero modifier keys required!)
+                // 7. Q + W: Quit application cleanly
                 if is_down && (vk == 0x51 || vk == 0x57) {
                     let both_down = (state.q_down && state.w_down)
                         || (state.q_down && is_phys_down(0x57))
                         || (state.w_down && is_phys_down(0x51));
-                    if both_down && !state.qw_active {
-                        state.qw_active = true;
-                        tracing::info!("Shortcut triggered: Q + W (Clean Application Exit)");
-                        let _ = PostThreadMessageW(
-                            main_thread_id,
-                            WM_APP_QUIT,
-                            windows::Win32::Foundation::WPARAM(0),
-                            windows::Win32::Foundation::LPARAM(0),
-                        );
+                    if both_down {
+                        swallow = true;
+                        if !state.qw_active {
+                            state.qw_active = true;
+                            tracing::info!("Secondary Shortcut triggered: Q + W (Clean Application Exit)");
+                            let _ = PostThreadMessageW(
+                                main_thread_id,
+                                WM_APP_QUIT,
+                                windows::Win32::Foundation::WPARAM(0),
+                                windows::Win32::Foundation::LPARAM(0),
+                            );
+                        }
                     }
                 } else if is_up && (vk == 0x51 || vk == 0x57) {
+                    if state.qw_active {
+                        swallow = true;
+                    }
                     state.qw_active = false;
                 }
 
-                // 8. Z + X: Emergency Hide everything (Zero modifier keys required!)
+                // 8. Z + X: Emergency Hide everything
                 if is_down && (vk == 0x5A || vk == 0x58) {
                     let both_down = (state.z_down && state.x_down)
                         || (state.z_down && is_phys_down(0x58))
                         || (state.x_down && is_phys_down(0x5A));
-                    if both_down && !state.zx_active {
-                        state.zx_active = true;
-                        tracing::info!("Shortcut triggered: Z + X (Emergency Hide)");
-                        let _ = PostThreadMessageW(
-                            main_thread_id,
-                            WM_APP_EMERGENCY_HIDE,
-                            windows::Win32::Foundation::WPARAM(0),
-                            windows::Win32::Foundation::LPARAM(0),
-                        );
+                    if both_down {
+                        swallow = true;
+                        if !state.zx_active {
+                            state.zx_active = true;
+                            tracing::info!("Secondary Shortcut triggered: Z + X (Emergency Hide)");
+                            let _ = PostThreadMessageW(
+                                main_thread_id,
+                                WM_APP_EMERGENCY_HIDE,
+                                windows::Win32::Foundation::WPARAM(0),
+                                windows::Win32::Foundation::LPARAM(0),
+                            );
+                        }
                     }
                 } else if is_up && (vk == 0x5A || vk == 0x58) {
+                    if state.zx_active {
+                        swallow = true;
+                    }
                     state.zx_active = false;
                 }
+            }
+
+            if swallow {
+                return LRESULT(1);
             }
         }
     }

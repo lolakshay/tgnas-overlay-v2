@@ -39,7 +39,7 @@ fn main() -> Result<()> {
     }
     tracing::info!(silent, "Starting transparent overlay, master control panel, and caption HUD");
     unsafe {
-        let mut overlay = overlay::Overlay::create(config.overlay.enabled, config.overlay.topmost)?;
+        let mut overlay = overlay::Overlay::create(config.overlay.enabled && !silent, config.overlay.topmost)?;
         let mut status_badge = status_badge::StatusBadge::create(
             &config.overlay.status_text,
             config.overlay.status_visible && !silent,

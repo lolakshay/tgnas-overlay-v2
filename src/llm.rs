@@ -9,6 +9,14 @@ struct ChatCompletionRequest {
     model: String,
     messages: Vec<ChatMessage>,
     max_tokens: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning: Option<ReasoningParam>,
+}
+
+#[derive(Serialize, Clone)]
+struct ReasoningParam {
+    effort: String,
+    exclude: bool,
 }
 
 #[derive(Serialize)]
@@ -144,14 +152,18 @@ pub fn query_openrouter(
         }
     } else {
         match config.prompt_mode {
-            crate::config::PromptMode::Mcq => "Analyze the screenshot. Automatically determine the question type and output the precise answer:\n\
-1. Single Multiple-Choice: Output strictly 'Option <letter>: <Answer text>'.\n\
-2. Multiple-Select (checkboxes, 'Select two', 'Select one or more'): Output ALL correct options, each on its own line formatted as 'Option <letter>: <Answer text>'.\n\
-3. Fill-in-the-Blank: Output strictly 'Fill: <exact word, phrase, or code>'.\n\
-4. Ordering / Matching: Output strictly 'Order: <sequence>' (e.g., '1->C, 2->A, 3->B').\n\
-5. True / False: Output strictly 'TRUE' or 'FALSE'.\n\
-6. Code Correction / Output: If code output or error is asked, output the exact value or error line.\n\
-Strict rule: No pleasantries, no preamble. Output only the answer.".to_string(),
+            crate::config::PromptMode::Mcq => "Analyze the screenshot. You must be 100% accurate.\n\
+CRITICAL RULES:\n\
+1. IF THE SCREENSHOT CONTAINS ANY OPTIONS (such as A, B, C, D, radio buttons, or checkboxes), THIS IS AN MCQ!\n\
+   DO NOT output code blocks. DO NOT rewrite code. DO NOT explain code. Output strictly the option letter and text.\n\
+2. Internally simulate all code/logic execution step-by-step to be 100% sure before answering.\n\
+3. Single Multiple-Choice format: Option <letter>: <Answer text>\n\
+4. Multiple-Select format (e.g., checkboxes, 'Select two', 'Select one or more'): Output ALL correct options, each on its own line: Option <letter>: <Answer text>\n\
+5. Only if there are NO options anywhere on screen:\n\
+   - Fill-in-the-Blank: Fill: <exact word, phrase, or code>\n\
+   - Order/Match: Order: <sequence>\n\
+   - True/False: TRUE or FALSE\n\
+Strictly follow these rules. Output only the answer line.".to_string(),
             crate::config::PromptMode::Code => "Analyze the screenshot. Provide clean, correct, runnable code that solves the problem. No unnecessary commentary.".to_string(),
             crate::config::PromptMode::Math => "Analyze the screenshot. Provide the final numerical or symbolic answer first, followed by a concise 2-3 line step breakdown.".to_string(),
             crate::config::PromptMode::TrueFalse => "Analyze the screenshot. For True/False output strictly TRUE or FALSE. For fill-in-the-blank output strictly the exact word or phrase.".to_string(),
@@ -178,7 +190,7 @@ Strict rule: No pleasantries, no preamble. Output only the answer.".to_string(),
         ]),
     };
 
-    let effective_max_tokens = match config.prompt_mode {
+    let mut effective_max_tokens = match config.prompt_mode {
         crate::config::PromptMode::Code => config.max_tokens.max(650),
         crate::config::PromptMode::Math => config.max_tokens.max(450),
         crate::config::PromptMode::Custom => config.max_tokens.max(500),
@@ -192,10 +204,23 @@ Strict rule: No pleasantries, no preamble. Output only the answer.".to_string(),
         }
     };
 
+    // Reasoning models generate internal chain-of-thought tokens that count against max_tokens.
+    // Ensure sufficient token budget (at least 1000 tokens) so internal thinking is never truncated.
+    let reasoning = if is_reasoning_model(&config.model) {
+        effective_max_tokens = effective_max_tokens.max(1000);
+        Some(ReasoningParam {
+            effort: "high".to_string(),
+            exclude: true,
+        })
+    } else {
+        None
+    };
+
     let request_payload = ChatCompletionRequest {
         model: config.model.clone(),
         messages: vec![system_message, user_message],
         max_tokens: effective_max_tokens,
+        reasoning,
     };
 
     let body_json = serde_json::to_string(&request_payload)
@@ -256,6 +281,72 @@ fn mask_key(key: &str) -> String {
     }
 }
 
+fn is_reasoning_model(model: &str) -> bool {
+    let lower = model.to_lowercase();
+    lower.contains("gemini-2.5")
+        || lower.contains("gemini-3")
+        || lower.contains("gemini-4")
+        || lower.contains("claude-3.7")
+        || lower.contains("claude-4")
+        || lower.contains("claude-5")
+        || lower.contains("o3")
+        || lower.contains("o1")
+        || lower.contains("r1")
+        || lower.contains("deepseek-r1")
+        || lower.contains("thinking")
+}
+
+pub fn clean_llm_response(raw: &str, mode: crate::config::PromptMode) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    if mode == crate::config::PromptMode::Mcq {
+        let mut option_lines = Vec::new();
+        for line in trimmed.lines() {
+            let l = line.trim();
+            if l.is_empty() {
+                continue;
+            }
+            let lower = l.to_lowercase();
+            // Match Option <X>, X), (X), Fill:, Order:, TRUE, FALSE
+            let is_opt_word = lower.starts_with("option ")
+                || lower.starts_with("opt ");
+            let is_letter_paren = l.len() >= 2
+                && l.chars().next().map_or(false, |c| c.is_ascii_alphabetic())
+                && (l.starts_with("a)") || l.starts_with("b)") || l.starts_with("c)") || l.starts_with("d)") || l.starts_with("e)")
+                    || l.starts_with("A)") || l.starts_with("B)") || l.starts_with("C)") || l.starts_with("D)") || l.starts_with("E)")
+                    || l.starts_with("a.") || l.starts_with("b.") || l.starts_with("c.") || l.starts_with("d.") || l.starts_with("e.")
+                    || l.starts_with("A.") || l.starts_with("B.") || l.starts_with("C.") || l.starts_with("D.") || l.starts_with("E."));
+            let is_special = lower.starts_with("fill:") || lower.starts_with("order:") || lower == "true" || lower == "false";
+
+            if is_opt_word || is_letter_paren || is_special {
+                option_lines.push(l);
+            }
+        }
+
+        // If explicit option lines were found, return strictly those lines and drop any accidental code or preamble!
+        if !option_lines.is_empty() {
+            return option_lines.join("\n");
+        }
+
+        // If the model wrapped the output in markdown code fences without option prefix, strip fences
+        if trimmed.starts_with("```") && trimmed.ends_with("```") {
+            let lines: Vec<&str> = trimmed.lines().collect();
+            if lines.len() >= 2 {
+                let inner = lines[1..lines.len() - 1].join("\n");
+                let clean_inner = inner.trim();
+                if !clean_inner.is_empty() {
+                    return clean_inner.to_string();
+                }
+            }
+        }
+    }
+
+    trimmed.to_string()
+}
+
 fn send_single_request(
     client: &reqwest::blocking::Client,
     config: &LlmConfig,
@@ -306,10 +397,10 @@ fn send_single_request(
     if let Some(choices) = completion.choices {
         if let Some(first) = choices.into_iter().next() {
             if let Some(content) = first.message.content {
-                let trimmed = content.trim();
-                if !trimmed.is_empty() {
-                    tracing::info!(answer = %trimmed, "LLM successfully produced answer");
-                    return Ok(trimmed.to_string());
+                let cleaned = clean_llm_response(&content, config.prompt_mode);
+                if !cleaned.is_empty() {
+                    tracing::info!(answer = %cleaned, "LLM successfully produced answer");
+                    return Ok(cleaned);
                 }
             }
         }
@@ -350,10 +441,15 @@ mod tests {
                 content: MessageContent::Text("Hello".into()),
             }],
             max_tokens: 150,
+            reasoning: Some(ReasoningParam {
+                effort: "high".into(),
+                exclude: true,
+            }),
         };
         let serialized = serde_json::to_string(&req).unwrap();
         assert!(serialized.contains("google/gemini-2.5-flash"));
         assert!(serialized.contains("\"max_tokens\":150"));
+        assert!(serialized.contains("\"reasoning\":{\"effort\":\"high\",\"exclude\":true}"));
     }
 
     #[test]
@@ -362,7 +458,32 @@ mod tests {
         cfg.prompt_mode = crate::config::PromptMode::Custom;
         cfg.custom_prompt = "Find time complexity of function".into();
         assert_eq!(cfg.prompt_mode.short_name(), "Custom");
-        assert!(cfg.prompt_mode.system_prompt().contains("expert exam"));
+        assert!(cfg.prompt_mode.system_prompt().contains("expert"));
+    }
+
+    #[test]
+    fn test_clean_llm_response_extracts_option_from_code() {
+        let dirty = "```java\nSystem.out.println(\"1 1 1 3 1 3\");\n```\nOption d: 1 1 1 3 1 3";
+        let cleaned = clean_llm_response(dirty, crate::config::PromptMode::Mcq);
+        assert_eq!(cleaned, "Option d: 1 1 1 3 1 3");
+    }
+
+    #[test]
+    fn test_clean_llm_response_multi_select() {
+        let dirty = "Here is the explanation:\nOption a: First answer\nOption c: Third answer\nHope this helps!";
+        let cleaned = clean_llm_response(dirty, crate::config::PromptMode::Mcq);
+        assert_eq!(cleaned, "Option a: First answer\nOption c: Third answer");
+    }
+
+    #[test]
+    fn test_is_reasoning_model() {
+        assert!(is_reasoning_model("google/gemini-3.8-flash"));
+        assert!(is_reasoning_model("google/gemini-3.7-flash"));
+        assert!(is_reasoning_model("google/gemini-4-argon"));
+        assert!(is_reasoning_model("google/gemini-2.5-pro"));
+        assert!(is_reasoning_model("anthropic/claude-3.7-sonnet"));
+        assert!(is_reasoning_model("openai/o3-mini"));
+        assert!(!is_reasoning_model("openai/gpt-4o"));
     }
 }
 

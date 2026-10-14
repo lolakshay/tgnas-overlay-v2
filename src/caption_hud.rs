@@ -142,10 +142,13 @@ impl CaptionHud {
         )?;
 
         let screen_w = work_area.right - work_area.left;
+        let screen_h = work_area.bottom - work_area.top;
         let default_w = 800.min(screen_w - 60);
         let default_h = 76;
         let default_x = work_area.left + (screen_w - default_w) / 2;
-        let default_y = work_area.bottom - default_h - 35; // bottom middle caption position
+        // Anchor into the lower-middle third of the screen (~68% down the viewport)
+        // Keeps the text right beneath the active question area to minimize eye travel!
+        let default_y = work_area.top + (screen_h * 68 / 100) - (default_h / 2);
 
         let (hud_x, hud_y, hud_w, hud_h) = match custom_rect {
             Some((x, y, w, h)) if w >= 200 && h >= 40 => (x, y, w, h),
@@ -281,6 +284,7 @@ impl CaptionHud {
                         needed_h,
                         SWP_NOACTIVATE,
                     );
+                    let _ = SetWindowDisplayAffinity(self.hwnd, WDA_EXCLUDEFROMCAPTURE);
                 }
             }
             let _ = InvalidateRect(Some(self.hwnd), None, true);
@@ -290,6 +294,9 @@ impl CaptionHud {
     pub fn set_visible(&mut self, visible: bool) {
         if visible {
             self.wake();
+            unsafe {
+                let _ = SetWindowDisplayAffinity(self.hwnd, WDA_EXCLUDEFROMCAPTURE);
+            }
         }
         unsafe {
             let _ = ShowWindow(self.hwnd, if visible { SW_SHOWNOACTIVATE } else { SW_HIDE });
@@ -465,6 +472,11 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
             }
             LRESULT(0)
         }
+        WM_WINDOWPOSCHANGED | WM_SIZE => {
+            let _ = SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
+            DefWindowProcW(hwnd, msg, wp, lp)
+        }
+        WM_MOUSEACTIVATE => LRESULT(MA_NOACTIVATE as isize),
         WM_NCHITTEST => {
             let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const Mutex<HudSharedState>;
             let in_drag_mode = if !ptr.is_null() {
