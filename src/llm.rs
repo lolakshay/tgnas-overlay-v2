@@ -58,7 +58,18 @@ struct ApiError {
 }
 
 
+static CLIENT_CACHE: std::sync::Mutex<Option<(bool, Option<String>, reqwest::blocking::Client)>> =
+    std::sync::Mutex::new(None);
+
 fn get_http_client(config: &LlmConfig) -> reqwest::blocking::Client {
+    if let Ok(guard) = CLIENT_CACHE.lock() {
+        if let Some((vpn, ref proxy, ref client)) = *guard {
+            if vpn == config.vpn_enabled && *proxy == config.proxy_url {
+                return client.clone();
+            }
+        }
+    }
+
     let mut builder = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(30))
         .pool_idle_timeout(Duration::from_secs(120))
@@ -93,7 +104,11 @@ fn get_http_client(config: &LlmConfig) -> reqwest::blocking::Client {
         }
     }
 
-    builder.build().unwrap_or_else(|_| reqwest::blocking::Client::new())
+    let client = builder.build().unwrap_or_else(|_| reqwest::blocking::Client::new());
+    if let Ok(mut guard) = CLIENT_CACHE.lock() {
+        *guard = Some((config.vpn_enabled, config.proxy_url.clone(), client.clone()));
+    }
+    client
 }
 
 /// Sends screenshot (JPEG/PNG) to OpenRouter and asks the LLM to output ONLY the option and the answer.
@@ -129,7 +144,14 @@ pub fn query_openrouter(
         }
     } else {
         match config.prompt_mode {
-            crate::config::PromptMode::Mcq => "Analyze the screenshot. Identify the question and options. If the question asks for multiple options (e.g., 'Select one or more', 'Select 2 options', checkboxes), output ALL correct options, each on its own line formatted as 'Option <letter>: <Answer text>'. Otherwise output strictly the single correct 'Option <letter>: <Answer text>'. No filler text.".to_string(),
+            crate::config::PromptMode::Mcq => "Analyze the screenshot. Automatically determine the question type and output the precise answer:\n\
+1. Single Multiple-Choice: Output strictly 'Option <letter>: <Answer text>'.\n\
+2. Multiple-Select (checkboxes, 'Select two', 'Select one or more'): Output ALL correct options, each on its own line formatted as 'Option <letter>: <Answer text>'.\n\
+3. Fill-in-the-Blank: Output strictly 'Fill: <exact word, phrase, or code>'.\n\
+4. Ordering / Matching: Output strictly 'Order: <sequence>' (e.g., '1->C, 2->A, 3->B').\n\
+5. True / False: Output strictly 'TRUE' or 'FALSE'.\n\
+6. Code Correction / Output: If code output or error is asked, output the exact value or error line.\n\
+Strict rule: No pleasantries, no preamble. Output only the answer.".to_string(),
             crate::config::PromptMode::Code => "Analyze the screenshot. Provide clean, correct, runnable code that solves the problem. No unnecessary commentary.".to_string(),
             crate::config::PromptMode::Math => "Analyze the screenshot. Provide the final numerical or symbolic answer first, followed by a concise 2-3 line step breakdown.".to_string(),
             crate::config::PromptMode::TrueFalse => "Analyze the screenshot. For True/False output strictly TRUE or FALSE. For fill-in-the-blank output strictly the exact word or phrase.".to_string(),
@@ -157,15 +179,15 @@ pub fn query_openrouter(
     };
 
     let effective_max_tokens = match config.prompt_mode {
-        crate::config::PromptMode::Code => config.max_tokens.max(600),
-        crate::config::PromptMode::Math => config.max_tokens.max(400),
+        crate::config::PromptMode::Code => config.max_tokens.max(650),
+        crate::config::PromptMode::Math => config.max_tokens.max(450),
         crate::config::PromptMode::Custom => config.max_tokens.max(500),
-        crate::config::PromptMode::Mcq => config.max_tokens.max(350),
+        crate::config::PromptMode::Mcq => config.max_tokens.max(500),
         _ => {
             if custom_question.is_some() {
-                config.max_tokens.max(450)
+                config.max_tokens.max(500)
             } else {
-                config.max_tokens.max(300)
+                config.max_tokens.max(350)
             }
         }
     };

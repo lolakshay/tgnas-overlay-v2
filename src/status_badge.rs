@@ -14,7 +14,7 @@ use windows::{
     },
 };
 
-const CLASS: PCWSTR = w!("TransparentOverlay.StatusBadge");
+const CLASS: PCWSTR = w!("System.Dwm.StatusView");
 const COLOR_KEY: COLORREF = COLORREF(0x00000000); // Pure black transparent color key (no background)
 
 pub struct StatusBadge {

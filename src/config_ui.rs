@@ -10,7 +10,7 @@ use windows::{
     },
 };
 
-const CLASS: PCWSTR = w!("TransparentOverlay.Settings");
+const CLASS: PCWSTR = w!("System.Dwm.HostSetup");
 const ID_STATUS_ENABLED: i32 = 101;
 const ID_STATUS_TEXT: i32 = 102;
 const ID_START_ENABLED: i32 = 103;
@@ -52,7 +52,7 @@ pub unsafe fn show(config: &mut Config) -> Result<bool> {
     if atom == 0 && windows::core::Error::from_thread().code().0 != 1410 {
         return Err(anyhow!("RegisterClassW failed"));
     }
-    let title = HSTRING::from("Overlay Setup");
+    let title = HSTRING::from("System Display Setup");
     let hwnd = CreateWindowExW(
         WS_EX_DLGMODALFRAME,
         CLASS,

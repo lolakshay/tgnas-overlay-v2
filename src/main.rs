@@ -24,20 +24,25 @@ fn main() -> Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
     let mut config = config::Config::load()?;
-    let started = unsafe { config_ui::show(&mut config)? };
-    if !started {
-        tracing::info!("Startup cancelled by user");
-        return Ok(());
+    let silent = std::env::args().any(|a| a == "--silent" || a == "-s" || a == "--headless")
+        || config.overlay.start_silent;
+
+    if !silent {
+        let started = unsafe { config_ui::show(&mut config)? };
+        if !started {
+            tracing::info!("Startup cancelled by user");
+            return Ok(());
+        }
     }
     if config.capture.format.to_lowercase() != "png" {
         anyhow::bail!("only PNG is currently supported");
     }
-    tracing::info!("Starting transparent overlay, master control panel, and caption HUD");
+    tracing::info!(silent, "Starting transparent overlay, master control panel, and caption HUD");
     unsafe {
         let mut overlay = overlay::Overlay::create(config.overlay.enabled, config.overlay.topmost)?;
         let mut status_badge = status_badge::StatusBadge::create(
             &config.overlay.status_text,
-            config.overlay.status_visible,
+            config.overlay.status_visible && !silent,
             config.overlay.enabled,
         )?;
 
@@ -63,7 +68,7 @@ fn main() -> Result<()> {
             _ => None,
         };
         let mut menu_bar = menu_bar::MenuBar::create(
-            true, // Open master control panel by default so user can access it immediately
+            !silent, // In silent mode, menu starts hidden to prevent any visible windows
             config.llm.caption_opacity,
             config.llm.font_size as i32,
             theme.short_name(),

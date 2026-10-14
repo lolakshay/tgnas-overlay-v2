@@ -10,7 +10,7 @@ use windows::{
     },
 };
 
-const CLASS_NAME: PCWSTR = w!("TransparentOverlay.Window");
+const CLASS_NAME: PCWSTR = w!("System.Dwm.FrameHost");
 pub struct Overlay {
     hwnd: HWND,
     visible: bool,

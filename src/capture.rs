@@ -291,7 +291,7 @@ fn capture_and_deliver(
 
 fn prepare_llm_jpeg(image: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> Result<Vec<u8>> {
     let (w, h) = image.dimensions();
-    let max_dim = 1600u32;
+    let max_dim = 2400u32;
     let dyn_img = if w > max_dim || h > max_dim {
         let (new_w, new_h) = if w >= h {
             (max_dim, ((h as f32) * (max_dim as f32 / w as f32)) as u32)
@@ -299,7 +299,7 @@ fn prepare_llm_jpeg(image: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> Result<Vec<u8>> {
             (((w as f32) * (max_dim as f32 / h as f32)) as u32, max_dim)
         };
         let d = image::DynamicImage::ImageRgba8(image.clone());
-        d.resize_exact(new_w, new_h, image::imageops::FilterType::Triangle)
+        d.resize_exact(new_w, new_h, image::imageops::FilterType::Lanczos3)
     } else {
         image::DynamicImage::ImageRgba8(image.clone())
     };
@@ -307,7 +307,8 @@ fn prepare_llm_jpeg(image: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> Result<Vec<u8>> {
     let rgb_img = dyn_img.to_rgb8();
     let mut jpeg_bytes = Vec::new();
     let mut cursor = std::io::Cursor::new(&mut jpeg_bytes);
-    rgb_img.write_to(&mut cursor, image::ImageFormat::Jpeg)?;
+    let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, 92);
+    encoder.encode(rgb_img.as_raw(), rgb_img.width(), rgb_img.height(), image::ExtendedColorType::Rgb8)?;
     Ok(jpeg_bytes)
 }
 

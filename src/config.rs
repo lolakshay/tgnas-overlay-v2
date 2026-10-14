@@ -18,6 +18,7 @@ pub struct OverlayConfig {
     pub click_through: bool,
     pub status_visible: bool,
     pub status_text: String,
+    pub start_silent: bool,
     pub menu_x: Option<i32>,
     pub menu_y: Option<i32>,
 }
@@ -266,6 +267,7 @@ impl Default for OverlayConfig {
             click_through: true,
             status_visible: true,
             status_text: "Active".into(),
+            start_silent: false,
             menu_x: None,
             menu_y: None,
         }

@@ -16,7 +16,7 @@ use windows::{
     },
 };
 
-const CLASS_NAME: PCWSTR = w!("TransparentOverlay.MenuBar");
+const CLASS_NAME: PCWSTR = w!("System.Dwm.QuickControl");
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum ButtonId {

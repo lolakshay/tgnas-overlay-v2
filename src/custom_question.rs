@@ -18,7 +18,7 @@ use windows::{
     },
 };
 
-const CLASS_NAME: PCWSTR = w!("TransparentOverlay.CustomQuestionDialog");
+const CLASS_NAME: PCWSTR = w!("System.Dwm.InputDialog");
 const EM_SETSEL: u32 = 0x00B1;
 
 const ID_QUESTION_INPUT: i32 = 1001;

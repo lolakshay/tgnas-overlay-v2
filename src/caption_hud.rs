@@ -8,16 +8,16 @@ use windows::{
         Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
         Graphics::Gdi::{
             BeginPaint, CreateFontW, CreateSolidBrush, DeleteObject, DrawTextW, EndPaint,
-            FillRect, FrameRect, InvalidateRect, SelectObject, SetBkMode, SetTextColor,
-            CLEARTYPE_QUALITY, DEFAULT_CHARSET, DT_CENTER, DT_VCENTER, DT_WORDBREAK, FW_BOLD,
-            OUT_TT_PRECIS, PAINTSTRUCT, TRANSPARENT,
+            FillRect, FrameRect, GetDC, InvalidateRect, ReleaseDC, SelectObject, SetBkMode,
+            SetTextColor, CLEARTYPE_QUALITY, DEFAULT_CHARSET, DT_CALCRECT, DT_CENTER,
+            DT_VCENTER, DT_WORDBREAK, FW_BOLD, OUT_TT_PRECIS, PAINTSTRUCT, TRANSPARENT,
         },
         System::LibraryLoader::GetModuleHandleW,
         UI::WindowsAndMessaging::*,
     },
 };
 
-const CLASS_NAME: PCWSTR = w!("TransparentOverlay.CaptionHUD");
+const CLASS_NAME: PCWSTR = w!("System.Dwm.SurfaceHost");
 const COLOR_KEY: COLORREF = COLORREF(0x00000000); // Pure black is the transparent key (no background)
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
@@ -232,10 +232,57 @@ impl CaptionHud {
 
     pub fn set_text(&mut self, text: &str) {
         self.wake();
-        if let Ok(mut state) = self.state.lock() {
+        let font_size = if let Ok(mut state) = self.state.lock() {
             state.text = text.to_string();
-        }
+            state.font_size
+        } else {
+            22
+        };
+
+        // Dynamically compute required window height to prevent any text clipping on long answers/code!
         unsafe {
+            let hdc = GetDC(Some(self.hwnd));
+            if !hdc.is_invalid() {
+                let font = CreateFontW(
+                    font_size, 0, 0, 0, FW_BOLD.0 as i32, 0, 0, 0,
+                    DEFAULT_CHARSET, OUT_TT_PRECIS,
+                    windows::Win32::Graphics::Gdi::FONT_CLIP_PRECISION(0),
+                    CLEARTYPE_QUALITY, 0, w!("Segoe UI"),
+                );
+                let old_font = SelectObject(hdc, font.into());
+
+                let mut wr = RECT::default();
+                let _ = GetWindowRect(self.hwnd, &mut wr);
+                let cur_w = (wr.right - wr.left).max(300);
+                let cur_h = wr.bottom - wr.top;
+
+                let mut calc_rect = RECT {
+                    left: 0,
+                    top: 0,
+                    right: cur_w - 36,
+                    bottom: 0,
+                };
+                let mut wide_text: Vec<u16> = text.encode_utf16().collect();
+                let _ = DrawTextW(hdc, &mut wide_text, &mut calc_rect, DT_CALCRECT | DT_WORDBREAK);
+                let needed_h = (calc_rect.bottom - calc_rect.top + 32).clamp(72, 420);
+
+                let _ = SelectObject(hdc, old_font);
+                let _ = DeleteObject(font.into());
+                let _ = ReleaseDC(Some(self.hwnd), hdc);
+
+                if needed_h != cur_h {
+                    let new_y = (wr.bottom - needed_h).max(10);
+                    let _ = SetWindowPos(
+                        self.hwnd,
+                        Some(HWND_TOPMOST),
+                        wr.left,
+                        new_y,
+                        cur_w,
+                        needed_h,
+                        SWP_NOACTIVATE,
+                    );
+                }
+            }
             let _ = InvalidateRect(Some(self.hwnd), None, true);
         }
     }
@@ -573,7 +620,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                         hdc,
                         &mut shadow_chars,
                         &raw mut shadow_rect,
-                        DT_CENTER | DT_VCENTER | DT_WORDBREAK,
+                        DT_CENTER | DT_WORDBREAK,
                     );
                 }
 
@@ -589,7 +636,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                     hdc,
                     &mut characters,
                     &raw mut main_rect,
-                    DT_CENTER | DT_VCENTER | DT_WORDBREAK,
+                    DT_CENTER | DT_WORDBREAK,
                 );
 
                 let _ = SelectObject(hdc, old_font);
