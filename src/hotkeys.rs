@@ -6,8 +6,8 @@ use windows::Win32::{
         Input::KeyboardAndMouse::GetAsyncKeyState,
         WindowsAndMessaging::{
             CallNextHookEx, PostThreadMessageW, SetWindowsHookExW, UnhookWindowsHookEx,
-            HHOOK, KBDLLHOOKSTRUCT, WH_KEYBOARD_LL, WM_APP, WM_KEYDOWN, WM_KEYUP,
-            WM_SYSKEYDOWN, WM_SYSKEYUP,
+            HHOOK, KBDLLHOOKSTRUCT, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_APP,
+            WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
         },
     },
 };
@@ -35,6 +35,7 @@ pub const WM_APP_CUSTOM_QUESTION_SUBMIT: u32 = WM_APP + 20;
 
 struct HookState {
     hook: Option<isize>,
+    mouse_hook: Option<isize>,
     main_thread_id: u32,
 
     p_down: bool,
@@ -73,6 +74,7 @@ struct HookState {
 
 static STATE: Mutex<HookState> = Mutex::new(HookState {
     hook: None,
+    mouse_hook: None,
     main_thread_id: 0,
 
     p_down: false,
@@ -145,11 +147,15 @@ impl RegisteredHotkeys {
         let hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(ll_keyboard_proc), None, 0)
             .map_err(|e| anyhow!("Failed to install WH_KEYBOARD_LL hook: {}", e))?;
 
+        let mouse_hook = SetWindowsHookExW(WH_MOUSE_LL, Some(ll_mouse_proc), None, 0)
+            .map_err(|e| anyhow!("Failed to install WH_MOUSE_LL hook: {}", e))?;
+
         if let Ok(mut state) = STATE.lock() {
             state.hook = Some(hook.0 as isize);
+            state.mouse_hook = Some(mouse_hook.0 as isize);
         }
 
-        tracing::info!("Registered stealth hooks: F6 / P+O (Capture & Solve), F7 / L+K (Answers), F8 / ,+. (Overlay), F9 / I+O (Custom Q&A), F10 / Z+X (Emergency Hide), [ / ] (History)");
+        tracing::info!("Registered stealth hooks: Mouse Button 4/Back (Capture & Solve), Mouse Button 5/Forward (Toggle HUD), F6 / P+O (Solve), F7 / L+K (Answers)");
         Ok(Self)
     }
 
@@ -162,6 +168,11 @@ impl Drop for RegisteredHotkeys {
     fn drop(&mut self) {
         if let Ok(mut state) = STATE.lock() {
             if let Some(raw) = state.hook.take() {
+                unsafe {
+                    let _ = UnhookWindowsHookEx(HHOOK(raw as *mut std::ffi::c_void));
+                }
+            }
+            if let Some(raw) = state.mouse_hook.take() {
                 unsafe {
                     let _ = UnhookWindowsHookEx(HHOOK(raw as *mut std::ffi::c_void));
                 }
@@ -249,6 +260,30 @@ unsafe extern "system" fn ll_keyboard_proc(
                             let _ = PostThreadMessageW(
                                 main_thread_id,
                                 WM_APP_EMERGENCY_HIDE,
+                                windows::Win32::Foundation::WPARAM(0),
+                                windows::Win32::Foundation::LPARAM(0),
+                            );
+                        }
+                        swallow = true;
+                    }
+                    0x05 => { // VK_XBUTTON1 (Mouse Extra Button 1 via software driver)
+                        if is_down {
+                            tracing::info!("Mouse Extra Button 1 VK triggered: Capture screenshot & solve");
+                            let _ = PostThreadMessageW(
+                                main_thread_id,
+                                WM_APP_SCREENSHOT,
+                                windows::Win32::Foundation::WPARAM(0),
+                                windows::Win32::Foundation::LPARAM(0),
+                            );
+                        }
+                        swallow = true;
+                    }
+                    0x06 => { // VK_XBUTTON2 (Mouse Extra Button 2 via software driver)
+                        if is_down {
+                            tracing::info!("Mouse Extra Button 2 VK triggered: Toggle Answer Display");
+                            let _ = PostThreadMessageW(
+                                main_thread_id,
+                                WM_APP_TOGGLE_ANSWERS,
                                 windows::Win32::Foundation::WPARAM(0),
                                 windows::Win32::Foundation::LPARAM(0),
                             );
@@ -522,3 +557,58 @@ unsafe extern "system" fn ll_keyboard_proc(
 
     CallNextHookEx(None, n_code, wparam, lparam)
 }
+
+const WM_XBUTTONDOWN: u32 = 0x020B;
+const WM_XBUTTONUP: u32 = 0x020C;
+const WM_NCXBUTTONDOWN: u32 = 0x00AB;
+const WM_NCXBUTTONUP: u32 = 0x00AC;
+
+unsafe extern "system" fn ll_mouse_proc(
+    n_code: i32,
+    wparam: windows::Win32::Foundation::WPARAM,
+    lparam: windows::Win32::Foundation::LPARAM,
+) -> LRESULT {
+    if n_code >= 0 {
+        let msg = wparam.0 as u32;
+        if msg == WM_XBUTTONDOWN || msg == WM_XBUTTONUP || msg == WM_NCXBUTTONDOWN || msg == WM_NCXBUTTONUP {
+            let ms = &*(lparam.0 as *const MSLLHOOKSTRUCT);
+            let xbutton = (ms.mouseData >> 16) & 0xFFFF;
+            let is_down = msg == WM_XBUTTONDOWN || msg == WM_NCXBUTTONDOWN;
+
+            let main_thread_id = if let Ok(state) = STATE.lock() {
+                state.main_thread_id
+            } else {
+                0
+            };
+
+            if xbutton == 1 {
+                // Mouse Extra Button 1 (Back / Lower thumb button): Capture screenshot & solve
+                if is_down && main_thread_id != 0 {
+                    tracing::info!("Mouse Extra Button 1 triggered: Capture & Solve (swallowing click)");
+                    let _ = PostThreadMessageW(
+                        main_thread_id,
+                        WM_APP_SCREENSHOT,
+                        windows::Win32::Foundation::WPARAM(0),
+                        windows::Win32::Foundation::LPARAM(0),
+                    );
+                }
+                return LRESULT(1); // SWALLOW: prevents browser from navigating back!
+            } else if xbutton == 2 {
+                // Mouse Extra Button 2 (Forward / Upper thumb button): Toggle Answer HUD
+                if is_down && main_thread_id != 0 {
+                    tracing::info!("Mouse Extra Button 2 triggered: Toggle Answer Display (swallowing click)");
+                    let _ = PostThreadMessageW(
+                        main_thread_id,
+                        WM_APP_TOGGLE_ANSWERS,
+                        windows::Win32::Foundation::WPARAM(0),
+                        windows::Win32::Foundation::LPARAM(0),
+                    );
+                }
+                return LRESULT(1); // SWALLOW: prevents browser from navigating forward!
+            }
+        }
+    }
+
+    CallNextHookEx(None, n_code, wparam, lparam)
+}
+

@@ -11,15 +11,15 @@ A native Rust utility for Windows 10/11 x64. On each launch it opens a native se
 
 | Shortcut | Action | Description |
 | --- | --- | --- |
-| `P + O` | **Capture Screenshot & Solve** | Takes screenshot of primary display, encodes ultra-fast JPEG, dispatches to LLM with zero blocking delays |
-| `I + O` | **Ask Custom Question** | Opens the sleek, stealth Custom Question Dialog right in the overlay to type any question & solve immediately |
-| `L + K` | **Toggle Answers** | Shows or hides the floating answer caption HUD |
-| `, + .` | **Toggle Overlay** | Toggles visibility of the fullscreen transparent overlay and status badge |
-| `M + N` | **Toggle Master Control Panel** | Shows or hides the semi-transparent Master Control Menu Bar (also unlocks interactive mode if click-through was active) |
+| **Mouse Button 4** *(Back)* / `F6` / `P + O` | **Capture Screenshot & Solve** | Takes instant screenshot, queries LLM, and streams the answer into the floating HUD. (Clicks swallowed from browser!) |
+| **Mouse Button 5** *(Forward)* / `F7` / `L + K` | **Toggle Answers** | Shows or hides the floating answer caption HUD. (Clicks swallowed from browser!) |
+| `F8` / `, + .` | **Toggle Overlay** | Toggles visibility of the fullscreen transparent overlay and status badge |
+| `F9` / `I + O` | **Ask Custom Question** | Opens the sleek, stealth Custom Question Dialog right in the overlay to type any question & solve immediately |
+| `F10` / `Z + X` | **Emergency Panic Hide** | Instantly hides overlay, badge, menu bar, and caption HUD in 0 ms |
+| `M + N` | **Toggle Master Control Panel** | Shows or hides the semi-transparent Master Control Menu Bar |
 | `B + N` | **Toggle Menu Click-Through (Ghost)** | Toggles the Menu Bar between 100% click-through pass-through mode and interactive mode |
 | `[` | **Previous Answer** | Revisit earlier generated answers/questions from history buffer |
 | `]` | **Next Answer** | Move forward to newer answers in history buffer |
-| `Z + X` | **Emergency Hide** | Instantly hides overlay, badge, menu bar, and caption HUD (Zero `Esc` used) |
 | `Q + W` | **Quit / Exit Application** | Cleanly closes all windows and shuts down the application |
 | `✕` *(Menu Bar)* | **Quit Application** | Clicking the red-accented `✕` button on the Master Menu Bar exits cleanly |
 

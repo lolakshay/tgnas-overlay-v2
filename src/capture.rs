@@ -58,6 +58,7 @@ impl GraphicsCaptureApiHandler for OneFrame {
 }
 
 static LAST_CAPTURED_JPEG: std::sync::Mutex<Option<Vec<u8>>> = std::sync::Mutex::new(None);
+static IS_SOLVING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub fn spawn_capture(
     config: CaptureConfig,
@@ -66,9 +67,15 @@ pub fn spawn_capture(
     llm_config: crate::config::LlmConfig,
     llm_sender: std::sync::mpsc::Sender<Result<String, String>>,
     main_thread_id: u32,
-) {
+) -> bool {
+    if IS_SOLVING.compare_exchange(false, true, std::sync::atomic::Ordering::SeqCst, std::sync::atomic::Ordering::SeqCst).is_err() {
+        tracing::info!("Capture request ignored: previous analysis still in progress");
+        return false;
+    }
+
     std::thread::spawn(move || {
         let result = capture_and_deliver(config, telegram_config, upload_config, &llm_config, None);
+        IS_SOLVING.store(false, std::sync::atomic::Ordering::SeqCst);
         match result {
             Ok(maybe_answer) => {
                 if let Some(answer) = maybe_answer {
@@ -97,6 +104,7 @@ pub fn spawn_capture(
             }
         }
     });
+    true
 }
 
 pub fn spawn_capture_with_custom_prompt(

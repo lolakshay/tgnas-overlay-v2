@@ -97,17 +97,18 @@ fn main() -> Result<()> {
         while GetMessageW(&mut msg, None, 0, 0).into() {
             match msg.message {
                 hotkeys::WM_APP_SCREENSHOT => {
-                    caption_hud.set_text("Analyzing screenshot with LLM...");
-                    caption_hud.set_visible(true);
-                    hotkeys.set_esc_enabled(true);
-                    capture::spawn_capture(
+                    if capture::spawn_capture(
                         config.capture.clone(),
                         config.telegram.clone(),
                         config.upload.clone(),
                         config.llm.clone(),
                         llm_tx.clone(),
                         main_thread_id,
-                    );
+                    ) {
+                        caption_hud.set_text("Analyzing screenshot with LLM...");
+                        caption_hud.set_visible(true);
+                        hotkeys.set_esc_enabled(true);
+                    }
                 }
                 hotkeys::WM_APP_TOGGLE_ANSWERS => {
                     let now_visible = caption_hud.toggle_visible();
