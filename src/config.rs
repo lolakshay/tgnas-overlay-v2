@@ -173,6 +173,22 @@ pub struct LlmConfig {
     pub vpn_relay_url: Option<String>,
     pub proxy_url: Option<String>,
 }
+pub fn sanitize_key(raw: &str) -> Option<String> {
+    let mut s = raw.trim();
+    if let Some(stripped) = s.strip_prefix("Bearer ") {
+        s = stripped.trim();
+    } else if let Some(stripped) = s.strip_prefix("bearer ") {
+        s = stripped.trim();
+    }
+    s = s.trim_matches(|c: char| c == '"' || c == '\'' || c == '[' || c == ']' || c == '`');
+    let trimmed = s.trim();
+    if !trimmed.is_empty() {
+        Some(trimmed.to_string())
+    } else {
+        None
+    }
+}
+
 impl LlmConfig {
     pub fn resolved_api_keys(&self) -> Vec<String> {
         let mut keys = Vec::new();
@@ -180,20 +196,19 @@ impl LlmConfig {
         // 1. Check api_keys list in config
         for k in &self.api_keys {
             for sub in k.split([',', '\n', ';']) {
-                let trimmed = sub.trim();
-                if !trimmed.is_empty() && !keys.contains(&trimmed.to_string()) {
-                    keys.push(trimmed.to_string());
+                if let Some(clean) = sanitize_key(sub) {
+                    if !keys.contains(&clean) {
+                        keys.push(clean);
+                    }
                 }
             }
         }
 
         // 2. Check single api_key in config
-        let single = self.api_key.trim();
-        if !single.is_empty() {
-            for sub in single.split([',', '\n', ';']) {
-                let trimmed = sub.trim();
-                if !trimmed.is_empty() && !keys.contains(&trimmed.to_string()) {
-                    keys.push(trimmed.to_string());
+        for sub in self.api_key.split([',', '\n', ';']) {
+            if let Some(clean) = sanitize_key(sub) {
+                if !keys.contains(&clean) {
+                    keys.push(clean);
                 }
             }
         }
@@ -201,18 +216,22 @@ impl LlmConfig {
         // 3. Check OPENROUTER_API_KEYS env var
         if let Ok(env_keys) = std::env::var("OPENROUTER_API_KEYS") {
             for sub in env_keys.split([',', '\n', ';']) {
-                let trimmed = sub.trim();
-                if !trimmed.is_empty() && !keys.contains(&trimmed.to_string()) {
-                    keys.push(trimmed.to_string());
+                if let Some(clean) = sanitize_key(sub) {
+                    if !keys.contains(&clean) {
+                        keys.push(clean);
+                    }
                 }
             }
         }
 
         // 4. Check OPENROUTER_API_KEY env var
         if let Ok(env_key) = std::env::var("OPENROUTER_API_KEY") {
-            let trimmed = env_key.trim();
-            if !trimmed.is_empty() && !keys.contains(&trimmed.to_string()) {
-                keys.push(trimmed.to_string());
+            for sub in env_key.split([',', '\n', ';']) {
+                if let Some(clean) = sanitize_key(sub) {
+                    if !keys.contains(&clean) {
+                        keys.push(clean);
+                    }
+                }
             }
         }
 
@@ -342,8 +361,8 @@ mod tests {
     #[test]
     fn test_multiple_resolved_api_keys() {
         let mut llm = LlmConfig::default();
-        llm.api_keys = vec!["key1".into(), "key2, key3".into()];
-        llm.api_key = "key4, key1".into(); // key1 is duplicate
+        llm.api_keys = vec!["\"key1\"".into(), "'key2', [key3]".into()];
+        llm.api_key = "Bearer key4, key1".into(); // key1 is duplicate
         let keys = llm.resolved_api_keys();
         assert_eq!(keys, vec!["key1", "key2", "key3", "key4"]);
     }

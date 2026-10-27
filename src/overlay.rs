@@ -41,7 +41,7 @@ impl Overlay {
                 windows::core::Error::from_thread()
             ));
         }
-        let ex = WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+        let ex = WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST;
         let hwnd = CreateWindowExW(
             ex,
             CLASS_NAME,
@@ -98,7 +98,17 @@ impl Overlay {
     }
     pub fn set_visible(&mut self, visible: bool) -> Result<()> {
         unsafe {
-            let _ = ShowWindow(self.hwnd, if visible { SW_SHOWNOACTIVATE } else { SW_HIDE });
+            if visible {
+                let _ = SetWindowPos(
+                    self.hwnd,
+                    Some(HWND_TOPMOST),
+                    0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                );
+                let _ = SetWindowDisplayAffinity(self.hwnd, WDA_EXCLUDEFROMCAPTURE);
+            } else {
+                let _ = ShowWindow(self.hwnd, SW_HIDE);
+            }
         }
         self.visible = visible;
         tracing::info!(visible, "Overlay state changed");

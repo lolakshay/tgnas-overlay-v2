@@ -407,8 +407,7 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> 
                 if !typed_keys.is_empty() {
                     let keys: Vec<String> = typed_keys
                         .split([',', ';', '\n'])
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty())
+                        .filter_map(crate::config::sanitize_key)
                         .collect();
                     config.llm.api_keys = keys.clone();
                     config.llm.api_key = keys.first().cloned().unwrap_or_default();

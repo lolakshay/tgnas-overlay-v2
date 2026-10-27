@@ -168,8 +168,9 @@ impl CaptionHud {
         let raw_state = Arc::into_raw(state.clone());
 
         // WS_EX_TRANSPARENT ensures mouse clicks pass 100% straight through to underlying windows!
+        // WS_EX_TOPMOST ensures the window stays in the topmost band
         let hwnd = CreateWindowExW(
-            WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+            WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
             CLASS_NAME,
             w!(""),
             WS_POPUP,
@@ -192,8 +193,9 @@ impl CaptionHud {
         // Exclude completely from screenshots & screen recordings
         let _ = SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
 
-        // Start 250ms interval timer for auto-dim inactivity fade & hover wake-up
-        let _ = SetTimer(Some(hwnd), 1, 250, None);
+        // Start 75ms interval timer for auto-dim, hover wake-up, and continuous topmost Z-order enforcement
+        // (Beats Proctorio's 150ms focus loop to guarantee the HUD is always physically on top)
+        let _ = SetTimer(Some(hwnd), 1, 75, None);
 
         let show_flag = if initially_visible {
             SWP_SHOWWINDOW
@@ -257,7 +259,6 @@ impl CaptionHud {
                 let mut wr = RECT::default();
                 let _ = GetWindowRect(self.hwnd, &mut wr);
                 let cur_w = (wr.right - wr.left).max(300);
-                let cur_h = wr.bottom - wr.top;
 
                 let mut calc_rect = RECT {
                     left: 0,
@@ -273,19 +274,17 @@ impl CaptionHud {
                 let _ = DeleteObject(font.into());
                 let _ = ReleaseDC(Some(self.hwnd), hdc);
 
-                if needed_h != cur_h {
-                    let new_y = (wr.bottom - needed_h).max(10);
-                    let _ = SetWindowPos(
-                        self.hwnd,
-                        Some(HWND_TOPMOST),
-                        wr.left,
-                        new_y,
-                        cur_w,
-                        needed_h,
-                        SWP_NOACTIVATE,
-                    );
-                    let _ = SetWindowDisplayAffinity(self.hwnd, WDA_EXCLUDEFROMCAPTURE);
-                }
+                let new_y = (wr.bottom - needed_h).max(10);
+                let _ = SetWindowPos(
+                    self.hwnd,
+                    Some(HWND_TOPMOST),
+                    wr.left,
+                    new_y,
+                    cur_w,
+                    needed_h,
+                    SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                );
+                let _ = SetWindowDisplayAffinity(self.hwnd, WDA_EXCLUDEFROMCAPTURE);
             }
             let _ = InvalidateRect(Some(self.hwnd), None, true);
         }
@@ -296,10 +295,18 @@ impl CaptionHud {
             self.wake();
             unsafe {
                 let _ = SetWindowDisplayAffinity(self.hwnd, WDA_EXCLUDEFROMCAPTURE);
+                let _ = SetWindowPos(
+                    self.hwnd,
+                    Some(HWND_TOPMOST),
+                    0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                );
+                let _ = InvalidateRect(Some(self.hwnd), None, true);
             }
-        }
-        unsafe {
-            let _ = ShowWindow(self.hwnd, if visible { SW_SHOWNOACTIVATE } else { SW_HIDE });
+        } else {
+            unsafe {
+                let _ = ShowWindow(self.hwnd, SW_HIDE);
+            }
         }
         self.visible = visible;
     }
@@ -437,6 +444,17 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
             LRESULT(1)
         }
         WM_TIMER => {
+            // Continuously pin window to top of topmost band to beat Proctorio's 150ms focus loop
+            if IsWindowVisible(hwnd).as_bool() {
+                let _ = SetWindowPos(
+                    hwnd,
+                    Some(HWND_TOPMOST),
+                    0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
+                );
+                let _ = SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
+            }
+
             let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const Mutex<HudSharedState>;
             if !ptr.is_null() {
                 let shared = &*ptr;

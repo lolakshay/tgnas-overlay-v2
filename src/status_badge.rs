@@ -44,7 +44,7 @@ impl StatusBadge {
         }
         let value = Box::new(HSTRING::from(text));
         let hwnd = CreateWindowExW(
-            WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+            WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
             CLASS,
             w!(""),
             WS_POPUP,
@@ -88,7 +88,17 @@ impl StatusBadge {
 
     pub fn set_visible(&mut self, visible: bool) {
         unsafe {
-            let _ = ShowWindow(self.hwnd, if visible { SW_SHOWNOACTIVATE } else { SW_HIDE });
+            if visible {
+                let _ = SetWindowPos(
+                    self.hwnd,
+                    Some(HWND_TOPMOST),
+                    0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                );
+                let _ = SetWindowDisplayAffinity(self.hwnd, WDA_EXCLUDEFROMCAPTURE);
+            } else {
+                let _ = ShowWindow(self.hwnd, SW_HIDE);
+            }
         }
         self.visible = visible;
     }

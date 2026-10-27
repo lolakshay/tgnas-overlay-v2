@@ -162,7 +162,17 @@ impl MenuBar {
 
     pub fn set_visible(&mut self, visible: bool) {
         unsafe {
-            let _ = ShowWindow(self.hwnd, if visible { SW_SHOWNOACTIVATE } else { SW_HIDE });
+            if visible {
+                let _ = SetWindowPos(
+                    self.hwnd,
+                    Some(HWND_TOPMOST),
+                    0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                );
+                let _ = SetWindowDisplayAffinity(self.hwnd, WDA_EXCLUDEFROMCAPTURE);
+            } else {
+                let _ = ShowWindow(self.hwnd, SW_HIDE);
+            }
         }
         self.visible = visible;
     }
